@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>EmoCrypt — Emoji Encryption</title>
+  <meta name="description" content="Turn any message into a string of emoji — and back — with the Rabbit stream cipher." />
+
+  <style>
+    /* ---------- Design tokens (Apple HIG, light + dark) ---------- */
+    :root {
+      --bg: #f5f5f7;
+      --surface: #ffffff;
+      --surface-2: #f2f2f7;          /* secondarySystemBackground */
+      --label: #1d1d1f;
+      --label-2: #6e6e73;
+      --label-3: #8e8e93;
+      --separator: rgba(60, 60, 67, 0.16);
+      --accent: #4f46e5;             /* indigo, 6.3:1 vs white */
+      --accent-hover: #4138d6;
+      --accent-text: #4f46e5;
+      --accent-tint: rgba(79, 70, 229, 0.12);
+      --accent-tint-hover: rgba(79, 70, 229, 0.20);
+      --accent-ring: rgba(79, 70, 229, 0.45);
+      --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 30px rgba(0, 0, 0, 0.08);
+      --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.08), 0 6px 16px rgba(79, 70, 229, 0.28);
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro",
+        "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Microsoft YaHei",
+        sans-serif;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #000000;
+        --surface: #1c1c1e;
+        --surface-2: #2c2c2e;
+        --label: #f5f5f7;
+        --label-2: #aeaeb2;
+        --label-3: #8e8e93;
+        --separator: rgba(84, 84, 88, 0.55);
+        --accent: #6e63f0;           /* white text, semibold => ~4.5:1 */
+        --accent-hover: #8176f6;
+        --accent-text: #a99ff7;      /* readable on dark tint */
+        --accent-tint: rgba(110, 99, 240, 0.18);
+        --accent-tint-hover: rgba(110, 99, 240, 0.28);
+        --accent-ring: rgba(124, 111, 240, 0.55);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+        --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.5), 0 12px 32px rgba(0, 0, 0, 0.55);
+        --shadow-btn: 0 1px 2px rgba(0, 0, 0, 0.4), 0 6px 18px rgba(110, 99, 240, 0.35);
+      }
+    }
+
+    /* ---------- Base ---------- */
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--label);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: clamp(24px, 6vw, 64px) 20px calc(40px + env(safe-area-inset-bottom));
+    }
+
+    /* ---------- Hero ---------- */
+    .hero { text-align: center; margin-bottom: 32px; }
+    .appicon {
+      width: 84px; height: 84px;
+      margin: 0 auto 18px;
+      border-radius: 20px;
+      display: grid; place-items: center;
+      font-size: 44px; line-height: 1;
+      background: linear-gradient(160deg, #6e63f0 0%, #4f46e5 60%, #3aa0ff 100%);
+      box-shadow: var(--shadow-md);
+    }
+    .eyebrow {
+      font-size: 13px; font-weight: 600; letter-spacing: 0.06em;
+      text-transform: uppercase; color: var(--accent-text); margin: 0 0 6px;
+    }
+    h1 {
+      font-size: clamp(30px, 7vw, 40px);
+      line-height: 1.1; font-weight: 700; letter-spacing: -0.02em;
+      margin: 0 0 10px;
+    }
+    .subtitle {
+      font-size: 17px; color: var(--label-2);
+      margin: 0 auto; max-width: 30em;
+    }
+
+    /* ---------- Card ---------- */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-md);
+      padding: clamp(20px, 5vw, 28px);
+    }
+    .field-group { margin-bottom: 20px; }
+    .field-group:last-of-type { margin-bottom: 0; }
+    .label {
+      display: block;
+      font-size: 13px; font-weight: 600; color: var(--label-2);
+      margin-bottom: 8px;
+    }
+    .input-row { position: relative; display: flex; align-items: center; }
+    .field {
+      width: 100%;
+      font: inherit; font-size: 17px; color: var(--label);
+      background: var(--surface-2);
+      border: 1px solid var(--separator);
+      border-radius: var(--radius-md);
+      padding: 14px 16px;
+      transition: border-color .2s ease, box-shadow .2s ease, background-color .2s ease;
+    }
+    textarea.field { resize: vertical; min-height: 120px; line-height: 1.45; }
+    .field::placeholder { color: var(--label-3); }
+    .field:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-tint);
+    }
+    /* reveal toggle for the key field */
+    .reveal {
+      position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+      width: 40px; height: 40px; flex: 0 0 auto;
+      border: none; background: transparent; color: var(--label-3);
+      cursor: pointer; border-radius: 10px; font-size: 18px;
+      display: grid; place-items: center;
+    }
+    .reveal:hover { background: var(--surface); color: var(--label-2); }
+    .reveal:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 2px; }
+
+    .hint {
+      font-size: 13px; color: var(--label-3);
+      margin: 10px 2px 0;
+    }
+
+    /* ---------- Buttons (HIG: style conveys hierarchy, not size) ---------- */
+    .actions {
+      display: flex; gap: 12px; margin-top: 24px;
+    }
+    .btn {
+      flex: 1 1 0;
+      font: inherit; font-size: 16px; font-weight: 600; line-height: 1;
+      min-height: 50px; padding: 0 22px;
+      border: 1px solid transparent; border-radius: var(--radius-md);
+      cursor: pointer; user-select: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      transition: transform .06s ease, background-color .2s ease, box-shadow .2s ease, color .2s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn:focus-visible { outline: 3px solid var(--accent-ring); outline-offset: 2px; }
+
+    .btn-primary { background: var(--accent); color: #fff; box-shadow: var(--shadow-btn); }
+    .btn-primary:hover { background: var(--accent-hover); }
+
+    .btn-secondary { background: var(--accent-tint); color: var(--accent-text); }
+    .btn-secondary:hover { background: var(--accent-tint-hover); }
+
+    .btn-plain { background: transparent; color: var(--label-2); }
+    .btn-plain:hover { background: var(--surface-2); }
+
+    /* ---------- Result ---------- */
+    .result { margin-top: 28px; }
+    .result-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .result-head .label { margin: 0; }
+    .bubble {
+      background: var(--accent);
+      color: #fff;
+      border-radius: 18px 18px 18px 5px;     /* iMessage-style tail */
+      padding: 16px 18px;
+      font-size: 26px; line-height: 1.45; letter-spacing: 0.02em;
+      word-break: break-word; overflow-wrap: anywhere;
+      box-shadow: var(--shadow-sm);
+      min-height: 60px;
+    }
+    .bubble.is-empty {
+      background: var(--surface-2);
+      color: var(--label-3);
+      font-size: 16px; line-height: 1.5; letter-spacing: 0;
+      box-shadow: none;
+      display: flex; align-items: center;
+    }
+    .result-actions { display: flex; gap: 12px; margin-top: 14px; }
+    .result-actions .btn { flex: 0 0 auto; }
+
+    .status {
+      font-size: 13px; color: var(--label-2);
+      margin: 12px 2px 0; min-height: 1em;
+    }
+    .status.error { color: #d70015; }
+
+    /* ---------- Footer ---------- */
+    .foot {
+      text-align: center; margin-top: 36px;
+      font-size: 13px; color: var(--label-3);
+    }
+    .foot a { color: var(--accent-text); text-decoration: none; }
+    .foot a:hover { text-decoration: underline; }
+
+    /* ---------- Motion ---------- */
+    .enter { animation: enter .5s cubic-bezier(.2,.7,.2,1) both; }
+    @keyframes enter {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: none; }
+    }
+    .pulse { animation: pulse .35s ease; }
+    @keyframes pulse {
+      0% { transform: scale(0.985); } 50% { transform: scale(1.01); } 100% { transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .enter, .pulse { animation: none; }
+      .btn:active { transform: none; }
+    }
+
+    /* ---------- Responsive ---------- */
+    @media (max-width: 420px) {
+      .actions { flex-direction: column; }
+      .bubble { font-size: 23px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="hero enter">
+      <div class="appicon" aria-hidden="true">🔐</div>
+      <p class="eyebrow">Emoji Encryption</p>
+      <h1>EmoCrypt</h1>
+      <p class="subtitle">Turn any message into a string of emoji — and back — with the Rabbit stream cipher.</p>
+    </header>
+
+    <section class="card enter" aria-label="Encrypt or decrypt a message">
+      <div class="field-group">
+        <label class="label" for="message">Message</label>
+        <div class="input-row">
+          <textarea id="message" class="field" placeholder="Type a message to encrypt, or paste emoji to decrypt…" autocomplete="off" spellcheck="false"></textarea>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <label class="label" for="key">Secret key</label>
+        <div class="input-row">
+          <input id="key" class="field" type="password" placeholder="A word or phrase" autocomplete="off" spellcheck="false" />
+          <button type="button" class="reveal" id="reveal" aria-label="Show secret key" aria-pressed="false">👁️</button>
+        </div>
+        <p class="hint">Same message + key produces different emoji each time — that’s the stream cipher at work.</p>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="encrypt">Encrypt</button>
+        <button type="button" class="btn btn-secondary" id="decrypt">Decrypt</button>
+      </div>
+
+      <div class="result">
+        <div class="result-head">
+          <span class="label" id="result-label">Result</span>
+        </div>
+        <div class="bubble is-empty" id="output" role="status" aria-live="polite">Your emoji will appear here.</div>
+        <div class="result-actions">
+          <button type="button" class="btn btn-secondary" id="copy">Copy</button>
+          <button type="button" class="btn btn-plain" id="clear">Clear</button>
+        </div>
+        <p class="status" id="status" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <footer class="foot">
+      EmoCrypt · Emoji encryption with the Rabbit cipher · <a href="https://github.com/fannyhasbi/emocrypt" target="_blank" rel="noopener">See the code ↗</a>
+    </footer>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.js"></script>
+  <script>
+    // ---- EmoCrypt (adapted from src/emocrypt.ts, browser build) ----
+    const EmoCrypt = (() => {
+      const EMOJIS = ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','😘','😍','😘','😗','☺','😚','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁','☹','😮','😯'];
+      const MAX = 65; // base64 alphabet length
+      const BASE = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/=';
+
+      function pickEmoji(index) {
+        const pool = [];
+        for (let i = index; i < EMOJIS.length; i += MAX) pool.push(EMOJIS[i]);
+        return pool[Math.floor(Math.random() * pool.length)];
+      }
+
+      function encrypt(message, key) {
+        const enc = CryptoJS.Rabbit.encrypt(message, key).toString();
+        let out = enc;
+        for (let i = 0; i < MAX; i++) {
+          out = out.split(BASE[i]).join(pickEmoji(i));
+        }
+        // trial: make sure it round-trips (mirrors original safeguard)
+        if (decrypt(out, key) !== message) return encrypt(message, key);
+        return out;
+      }
+
+      function decrypt(cipher, key) {
+        let base = '';
+        for (const ch of cipher) {
+          const idx = EMOJIS.indexOf(ch);
+          base += idx === -1 ? ch : BASE[idx % MAX];
+        }
+        try {
+          const bytes = CryptoJS.Rabbit.decrypt(base, key);
+          return bytes.toString(CryptoJS.enc.Utf8) || '';
+        } catch (e) {
+          return '';
+        }
+      }
+
+      return { encrypt, decrypt };
+    })();
+
+    // ---- UI wiring ----
+    const $ = (id) => document.getElementById(id);
+    const message = $('message'), key = $('key'), output = $('output');
+    const status = $('status'), reveal = $('reveal');
+
+    function setOutput(text, isEmpty) {
+      output.textContent = text;
+      output.classList.toggle('is-empty', !!isEmpty);
+      if (!isEmpty) { output.classList.remove('pulse'); void output.offsetWidth; output.classList.add('pulse'); }
+    }
+    function setStatus(text, isError) {
+      status.textContent = text;
+      status.classList.toggle('error', !!isError);
+    }
+
+    $('encrypt').addEventListener('click', () => {
+      const msg = message.value, k = key.value;
+      if (!msg) { setStatus('Enter a message to encrypt.', true); return; }
+      setOutput(EmoCrypt.encrypt(msg, k), false);
+      setStatus('Encrypted. Copy the emoji to share it.');
+    });
+
+    $('decrypt').addEventListener('click', () => {
+      const cip = message.value, k = key.value;
+      if (!cip) { setStatus('Paste emoji to decrypt.', true); return; }
+      const res = EmoCrypt.decrypt(cip, k);
+      if (!res) { setStatus('Couldn’t decrypt — check the emoji and key.', true); return; }
+      setOutput(res, false);
+      setStatus('Decrypted.');
+    });
+
+    $('copy').addEventListener('click', async () => {
+      if (output.classList.contains('is-empty')) return;
+      try {
+        await navigator.clipboard.writeText(output.textContent);
+        const btn = $('copy'); const prev = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => (btn.textContent = prev), 1500);
+        setStatus('Copied to clipboard.');
+      } catch (e) { setStatus('Copy failed — select the text manually.', true); }
+    });
+
+    $('clear').addEventListener('click', () => {
+      message.value = ''; key.value = '';
+      setOutput('Your emoji will appear here.', true);
+      setStatus(''); message.focus();
+    });
+
+    reveal.addEventListener('click', () => {
+      const showing = key.type === 'text';
+      key.type = showing ? 'password' : 'text';
+      reveal.setAttribute('aria-pressed', String(!showing));
+      reveal.setAttribute('aria-label', showing ? 'Show secret key' : 'Hide secret key');
+      reveal.textContent = showing ? '👁️' : '🙈';
+    });
+  </script>
+</body>
+</html>
